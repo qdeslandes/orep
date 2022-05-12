@@ -4,6 +4,7 @@ Provides interface to manipulate hosts' credentials and 1Password Connect REST A
 
 Attributes:
     DEFAULT_KEY_LEN (int): default length for SSH RSA keys.
+    SUDO_REGEXP (re.Pattern): compiled regexp used to detect interactive sudo password request.
 """
 
 import enum
@@ -24,6 +25,7 @@ import paramiko
 import onepasswordconnectsdk as op
 
 DEFAULT_KEY_LEN = 4096
+SUDO_REGEXP = re.compile(r"\[sudo\] password for quentin:")
 
 
 def channel_wait_for(channel: paramiko.channel.Channel, endswith: typing.Pattern, timeout: int = 5):
@@ -487,7 +489,12 @@ class HostCredentials:
                         if len(out) == 0:
                             is_alive = False
                         else:
-                            print(out.decode("utf-8"), end="")
+                            msg = out.decode("utf-8")
+                            print(msg, end="")
+
+                            if SUDO_REGEXP.match(msg):
+                                channel.send(f"{self.password}\n")
+
                             sys.stdout.flush()
                     except socket.timeout:
                         pass
