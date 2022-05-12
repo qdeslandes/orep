@@ -6,27 +6,7 @@ import logging
 import os
 import sys
 from orep.orep import OpConnect, HostCredentials
-
-DEFAULT_CONFIG_NAME = ".orep.cfg"
-DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), DEFAULT_CONFIG_NAME)
-
-
-def load_config(config_path: str) -> dict:
-    """Load configuration from the default location.
-
-    Args:
-        config_path (str): path to the configuration file to read.
-
-    Returns:
-        dict: configuration options as defined in the configuration file.
-    """
-
-    if not os.path.exists(config_path):
-        logger.info(f"Config file not found: {config_path}")
-        return {}
-
-    with open(config_path, "r", encoding="utf-8") as config:
-        return json.loads(config.read())
+from orep.utils import get_config
 
 
 def parse_arguments(config: dict = {}) -> argparse.Namespace:
@@ -114,7 +94,7 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
 
 
 if __name__ == "__main__":
-    args = parse_arguments(load_config(DEFAULT_CONFIG_PATH))
+    args = parse_arguments(get_config())
     logger = setup_logging(logging.DEBUG if args.debug else logging.INFO)
 
     op = OpConnect(args.op_host, args.op_api_key, logger)
