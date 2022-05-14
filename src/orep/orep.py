@@ -349,6 +349,8 @@ class HostCredentials:
 
         From a connected SSH client, this method will use `passwd` to update the user's password
         on the host.
+        `passwd` command won't ask for the current password if the user calling the command is root,
+        in which case we skip this step.
 
         Args:
             client (paramiko.SSHClient): client connected to the remote host.
@@ -357,13 +359,14 @@ class HostCredentials:
 
         channel = client.invoke_shell()
         channel.send("passwd\n")
-        channel_wait_for(channel, ".*Current password:.*")
-        channel.send(f"{current_password}\n")
+        if self.username != "root":
+            channel_wait_for(channel, ".*Current password:.*")
+            channel.send(f"{current_password}\n")
         channel_wait_for(channel, ".*New password:.*")
         channel.send(f"{self.password}\n")
         channel_wait_for(channel, ".*Retype new password:.*")
         channel.send(f"{self.password}\n")
-        channel_wait_for(channel, ".*all authentication tokens updated successfully.*")
+        channel_wait_for(channel, ".*successfully.*")
         self._logger.info("Password successfully updated on remote host!")
 
     def _copy_key_on_remote(self, client: paramiko.SSHClient):
