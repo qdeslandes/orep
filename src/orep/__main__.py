@@ -1,11 +1,8 @@
 #!/usr/bin/python3
 import argparse
 import getpass
-import json
 import logging
-import os
-import sys
-from orep.orep import OpConnect, HostCredentials
+from orep.orep import OpConnect, HostCredentials, set_logger
 from orep.utils import get_config
 
 
@@ -53,16 +50,22 @@ def parse_arguments(config: dict = {}) -> argparse.Namespace:
     create_parser = subparsers.add_parser("create")
     create_parser.add_argument("--hostname", required=True, help="Remote host's hostname")
     create_parser.add_argument("--username", required=True, help="Remote host's username")
-    create_parser.add_argument(
-        "--force", action="store_true", help="Force credentials change even if host already exists"
-    )
 
     # Renew credentials command
-    connect_parser = subparsers.add_parser("renew")
-    connect_parser.add_argument("hostname", help="Host to connect to")
+    renew_parser = subparsers.add_parser("renew")
+    renew_parser.add_argument("--hostname", required=True, help="Host to renew credentials for")
+    renew_parser.add_argument("--username", required=True, help="User to change credentials for")
+
+    # Renew credentials command
+    default_parser = subparsers.add_parser("default")
+    default_parser.add_argument(
+        "--hostname", required=True, help="Host to change the default user for"
+    )
+    default_parser.add_argument("--username", required=True, help="New default user")
 
     # Connect command
     connect_parser = subparsers.add_parser("connect")
+    connect_parser.add_argument("--username", default=None, help="Username to connect with")
     connect_parser.add_argument("hostname", help="Host to connect to")
 
     return parser.parse_args()
@@ -96,25 +99,17 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
 if __name__ == "__main__":
     args = parse_arguments(get_config())
     logger = setup_logging(logging.DEBUG if args.debug else logging.INFO)
+    set_logger(logger)
 
     op = OpConnect(args.op_host, args.op_api_key, logger)
     host = HostCredentials(args.hostname, op, op.get_vault_by_name(args.vault), logger)
 
     if args.command == "create":
-        if host.exists:
-            if not args.force:
-                logger.info("Credentials already exists. Pass --force to force override.")
-                sys.exit(-1)
-            else:
-                logger.warning("CREDENTIALS ALREADY EXIST. FORCING OVERRIDE!")
-
-        logger.info("Please, provide current host's password")
-        password = getpass.getpass("Password: ")
-        host.create(args.username, password, args.force)
+        logger.info(f"Please, provide current host's password for {args.username}")
+        host.create(args.username, getpass.getpass("Password: "), False)
     elif args.command == "renew":
-        if not host.exists:
-            logger.error("Credentials doesn't exist. Can't renew!")
-            sys.exit(-1)
-        host.renew()
+        host.renew(args.username)
+    elif args.command == "default":
+        host.default(args.username)
     elif args.command == "connect":
-        host.connect()
+        host.connect(args.username)
