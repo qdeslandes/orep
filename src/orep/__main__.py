@@ -50,13 +50,23 @@ def parse_arguments(config: dict = {}) -> argparse.Namespace:
     create_parser = subparsers.add_parser("create")
     create_parser.add_argument("--hostname", required=True, help="Remote host's hostname")
     create_parser.add_argument("--username", required=True, help="Remote host's username")
+    create_parser.add_argument(
+        "--ask-pass",
+        action="store_true",
+        help="Ask for new user's password instead of generating a new one",
+    )
 
     # Renew credentials command
     renew_parser = subparsers.add_parser("renew")
     renew_parser.add_argument("--hostname", required=True, help="Host to renew credentials for")
     renew_parser.add_argument("--username", required=True, help="User to change credentials for")
+    renew_parser.add_argument(
+        "--ask-pass",
+        action="store_true",
+        help="Ask for new user's password instead of generating a new one",
+    )
 
-    # Renew credentials command
+    # Set default credentials command
     default_parser = subparsers.add_parser("default")
     default_parser.add_argument(
         "--hostname", required=True, help="Host to change the default user for"
@@ -106,9 +116,14 @@ if __name__ == "__main__":
 
     if args.command == "create":
         logger.info(f"Please, provide current host's password for {args.username}")
-        host.create(args.username, getpass.getpass("Password: "), False)
+        host.create(
+            args.username,
+            getpass.getpass("Password: "),
+            ask_pass=args.ask_pass,
+            force=False,
+        )
     elif args.command == "renew":
-        host.renew(args.username)
+        host.renew(args.username, ask_pass=args.ask_pass)
     elif args.command == "default":
         host.default(args.username)
     elif args.command == "connect":

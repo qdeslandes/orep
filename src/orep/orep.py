@@ -12,7 +12,7 @@ Todo:
     - Allow `su` command during interactive SSH sessions.
 """
 
-import enum
+import getpass
 import io
 import logging
 import os
@@ -258,6 +258,7 @@ class User:
         private_key_passphrase (str): password use to encrypt the private key.
         is_default (bool): if True, this used it the default user to connect as. Only one default
             user is allowed for each host.
+        logger (logging.Logger): logging object to write logs to.
     """
 
     def __init__(
@@ -268,6 +269,7 @@ class User:
         private_key: paramiko.rsakey.RSAKey = None,
         private_key_passphrase: str = None,
         is_default: bool = False,
+        logger: logging.Logger = logging,
     ):
         self._id = id
         self._username = username
@@ -275,6 +277,28 @@ class User:
         self._private_key = private_key
         self._private_key_passphrase = private_key_passphrase
         self._is_default = is_default
+        self._logger = logger
+
+    def ask_password(self):
+        """Ask for the new password to use for the given user.
+
+        New password can be the same as the existing one. If password is empty, a random
+        password is generated.
+        """
+
+        try1, try2 = "1", "2"
+        while try1 != try2:
+            try1 = getpass.getpass("New password: ")
+            try2 = getpass.getpass("Re-type new password: ")
+
+            if try1 != try2:
+                self._logger.warning("Passwords do not match, try again")
+
+        if not try1:
+            self._logger.info("Password are empty, generating a new password")
+            try1 = self.gen_password()
+
+        self._password = try1
 
     def gen_password(self, length: int = 32):
         """Generate new fixed-length password for the remote host.
@@ -440,6 +464,8 @@ class HostCredentials:
         self._op = opconnect
         self._vault = vault
 
+        self._logger = logger
+
         self._load()
 
     def _load(self):
@@ -473,6 +499,7 @@ class HostCredentials:
                 private_key,
                 fields["private key passphrase"] if private_key else None,
                 DEFAULT_SSH_USER_TAG in user.tags,
+                self._logger,
             )
 
         _LOGGER.info(f"Loaded credentials: {', '.join(self._users.keys())}")
@@ -536,7 +563,9 @@ class HostCredentials:
             user.id = new_item.id
             _LOGGER.info(f"Saved credentials for {user.username}")
 
-    def create(self, username: str, current_password: str, force: bool = False):
+    def create(
+        self, username: str, current_password: str, ask_pass: bool = False, force: bool = False
+    ):
         """Create new credentials for current host and save them to 1Password.
 
         This method will generate new password and SSH key, then exported them to the remote host
@@ -551,6 +580,8 @@ class HostCredentials:
             username (str): usernrame to update the credentials for.
             current_password (str): current user's password. Used to log to the host to be able
                 to update the credentials.
+            ask_pass (bool): if True, orep will ask the use for the new password to use on the
+                remote host, instead of generating a random one.
             force (bool): if True, forces credentials update, even if they already exists.
         """
 
@@ -562,8 +593,13 @@ class HostCredentials:
             else:
                 _LOGGER.info("Forcing credentials creation: existing credentials will be removed!")
 
-        user = self._users.get(username, User(username=username))
-        user.gen_password()
+        user = self._users.get(username, User(username=username, logger=self._logger))
+
+        if ask_pass:
+            user.ask_password()
+        else:
+            user.gen_password()
+
         user.gen_ssh_key()
 
         # Update host with new credentials
@@ -575,7 +611,7 @@ class HostCredentials:
         # Save credentials
         self._save(user)
 
-    def renew(self, username: str):
+    def renew(self, username: str, ask_pass: bool = False):
         """Update credentials for a existing host.
 
         Current credentials will be changed, and remote host will be updated.
@@ -590,7 +626,7 @@ class HostCredentials:
             self._logger.error(f"Credentials for {username} on {self.hostname} doesn't exist yet!")
             return
 
-        self.create(user.username, user.password, force=True)
+        self.create(user.username, user.password, ask_pass=ask_pass, force=True)
 
     def default(self, username: str):
         """Set default user for the remote host.
@@ -705,6 +741,9 @@ class HostCredentials:
             self._logger.info(f"Connection to {self.hostname} closed.")
 
         client.close()
+
+    def user(self, username: str) -> User:
+        return self._users[username]
 
     @property
     def default_user(self) -> User:
